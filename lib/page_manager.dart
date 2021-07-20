@@ -25,31 +25,72 @@ class PageManager {
   // Events: Calls coming from the UI
   void init() async {
     // add three songs
+
+    await _loadPlaylist();
+    //_listenForUpdatesThatAffectProgressBar();
+    _listenToCurrentPosition();
+    _listenToBufferedPosition();
+    _listenToTotalDuration();
+    _listenToPlaybackState();
+    _listenToChangesInPlaylist();
+    _listenToChangesInSong();
+  }
+
+  Future<void> _loadPlaylist() async {
     final songRepository = getIt<PlaylistRepository>();
     final playlist = await songRepository.fetchInitialPlaylist();
     final mediaItems = playlist
         .map((song) => MediaItem(
-              id: song['id']!,
-              album: song['album']!,
-              title: song['title']!,
+              id: song['id'] ?? '',
+              album: song['album'] ?? '',
+              title: song['title'] ?? '',
               extras: {'url': song['url']},
             ))
         .toList();
     _audioHandler.addQueueItems(mediaItems);
-
-    _listenForUpdatesThatAffectProgressBar();
-    _listenToPlaybackState();
-    _listenToChangesInPlaylist();
-    _listenToChangesInSong();
   }
 
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<PlaybackState>? _playbackStateSubscription;
   StreamSubscription<MediaItem?>? _mediaItemSubscription;
 
-  void _listenForUpdatesThatAffectProgressBar() {
-    // curent position
-    _positionSubscription = AudioService.getPositionStream().listen((position) {
+  // void _listenForUpdatesThatAffectProgressBar() {
+  //   // curent position
+  //   AudioService.getPositionStream().listen((position) {
+  //     final oldState = progressNotifier.value;
+  //     progressNotifier.value = ProgressBarState(
+  //       current: position,
+  //       buffered: oldState.buffered,
+  //       total: oldState.total,
+  //     );
+  //   });
+
+  //   // buffered position
+  //   _playbackStateSubscription =
+  //       _audioHandler.playbackState.listen((playbackState) {
+  //     final oldState = progressNotifier.value;
+  //     print(playbackState.bufferedPosition);
+  //     progressNotifier.value = ProgressBarState(
+  //       current: oldState.current,
+  //       buffered: playbackState.bufferedPosition,
+  //       total: oldState.total,
+  //     );
+  //   });
+
+  //   // total duration
+  //   _mediaItemSubscription = _audioHandler.mediaItem.listen((mediaItem) {
+  //     print('media item stream event: $mediaItem');
+  //     final oldState = progressNotifier.value;
+  //     progressNotifier.value = ProgressBarState(
+  //       current: oldState.current,
+  //       buffered: oldState.buffered,
+  //       total: mediaItem?.duration ?? Duration.zero,
+  //     );
+  //   });
+  // }
+
+  void _listenToCurrentPosition() {
+    AudioService.getPositionStream().listen((position) {
       final oldState = progressNotifier.value;
       progressNotifier.value = ProgressBarState(
         current: position,
@@ -57,10 +98,10 @@ class PageManager {
         total: oldState.total,
       );
     });
+  }
 
-    // buffered position
-    _playbackStateSubscription =
-        _audioHandler.playbackState.listen((playbackState) {
+  void _listenToBufferedPosition() {
+    _audioHandler.playbackState.listen((playbackState) {
       final oldState = progressNotifier.value;
       print(playbackState.bufferedPosition);
       progressNotifier.value = ProgressBarState(
@@ -69,9 +110,10 @@ class PageManager {
         total: oldState.total,
       );
     });
+  }
 
-    // total duration
-    _mediaItemSubscription = _audioHandler.mediaItem.listen((mediaItem) {
+  void _listenToTotalDuration() {
+    _audioHandler.mediaItem.listen((mediaItem) {
       print('media item stream event: $mediaItem');
       final oldState = progressNotifier.value;
       progressNotifier.value = ProgressBarState(
@@ -104,7 +146,8 @@ class PageManager {
     _audioHandler.queue.listen((playlist) {
       final queue = playlist ?? [];
       if (queue.isEmpty) return;
-      playlistNotifier.value = queue.map((item) => item.title).toList();
+      final newList = queue.map((item) => item.title).toList();
+      playlistNotifier.value = newList;
     });
   }
 
@@ -167,24 +210,25 @@ class PageManager {
     final songRepository = getIt<PlaylistRepository>();
     final song = await songRepository.fetchAnotherSong();
     final mediaItem = MediaItem(
-      id: song['id']!,
-      album: song['album']!,
-      title: song['title']!,
+      id: song['id'] ?? '',
+      album: song['album'] ?? '',
+      title: song['title'] ?? '',
       extras: {'url': song['url']},
     );
     _audioHandler.addQueueItem(mediaItem);
   }
 
   void remove() {
-    final indexOfLastItem = (_audioHandler.queue.value?.length ?? 0) - 1;
-    if (indexOfLastItem < 0) return;
-    _audioHandler.removeQueueItemAt(indexOfLastItem);
+    final lastIndex = (_audioHandler.queue.value?.length ?? 0) - 1;
+    if (lastIndex < 0) return;
+    _audioHandler.removeQueueItemAt(lastIndex);
   }
 
   void dispose() {
-    _positionSubscription?.cancel();
-    _playbackStateSubscription?.cancel();
-    _mediaItemSubscription?.cancel();
+    _audioHandler.customAction('dispose', null);
+  }
+
+  void stop() {
     _audioHandler.stop();
   }
 }

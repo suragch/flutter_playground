@@ -91,6 +91,7 @@ class _HomeWidgetState extends State<HomeWidget> {
             _labelLocationButtons(),
             _labelTypeButtons(),
             _labelSizeButtons(),
+            const Spacer(),
             _visibilityButtons(),
             const Spacer(),
             _progressBar(),
@@ -193,7 +194,6 @@ class _HomeWidgetState extends State<HomeWidget> {
   }
 
   Wrap _visibilityButtons() {
-    final fontColor = Theme.of(context).textTheme.bodyText1?.color;
     return Wrap(children: [
       OutlinedButton(
         child: const Text('Invisible'),

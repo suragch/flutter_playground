@@ -1,271 +1,288 @@
-import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
 import 'package:flutter/material.dart';
-import 'notifiers/play_button_notifier.dart';
-import 'notifiers/progress_notifier.dart';
-import 'notifiers/repeat_button_notifier.dart';
-import 'page_manager.dart';
-import 'services/service_locator.dart';
+import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
+import 'package:flutter/rendering.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:rxdart/rxdart.dart';
 
-void main() async {
-  await setupServiceLocator();
-  runApp(MyApp());
+void main() {
+  runApp(const MyApp());
 }
 
-class MyApp extends StatefulWidget {
+class MyApp extends StatelessWidget {
+  const MyApp({Key? key}) : super(key: key);
   @override
-  _MyAppState createState() => _MyAppState();
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeVariation>(
+      valueListenable: themeNotifier,
+      builder: (context, value, child) {
+        return MaterialApp(
+          theme: ThemeData(
+              primarySwatch: value.color, brightness: value.brightness),
+          home: const HomeWidget(),
+        );
+      },
+    );
+  }
 }
 
-class _MyAppState extends State<MyApp> {
+var themeNotifier = ValueNotifier<ThemeVariation>(
+  const ThemeVariation(Colors.blue, Brightness.light),
+);
+
+class ThemeVariation {
+  const ThemeVariation(this.color, this.brightness);
+  final MaterialColor color;
+  final Brightness brightness;
+}
+
+class HomeWidget extends StatefulWidget {
+  const HomeWidget({Key? key}) : super(key: key);
+  @override
+  _HomeWidgetState createState() => _HomeWidgetState();
+}
+
+class _HomeWidgetState extends State<HomeWidget> {
+  late AudioPlayer _player;
+  final url = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3';
+  late Stream<DurationState> _durationState;
+  var _labelLocation = TimeLabelLocation.below;
+  var _labelType = TimeLabelType.totalTime;
+  TextStyle? _labelStyle;
+  double _visibility = 1.0;
+
   @override
   void initState() {
     super.initState();
-    getIt<PageManager>().init();
+    _player = AudioPlayer();
+    _durationState = Rx.combineLatest2<Duration, PlaybackEvent, DurationState>(
+        _player.positionStream,
+        _player.playbackEventStream,
+        (position, playbackEvent) => DurationState(
+              progress: position,
+              buffered: playbackEvent.bufferedPosition,
+              total: playbackEvent.duration,
+            ));
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      await _player.setUrl(url);
+    } catch (e) {
+      debugPrint('An error occured $e');
+    }
   }
 
   @override
   void dispose() {
-    getIt<PageManager>().dispose();
+    _player.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        body: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            children: [
-              CurrentSongTitle(),
-              Playlist(),
-              AddRemoveSongButtons(),
-              AudioProgressBar(),
-              AudioControlButtons(),
-            ],
-          ),
+    debugPrint('building app');
+    return Scaffold(
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          children: [
+            _themeButtons(),
+            _labelLocationButtons(),
+            _labelTypeButtons(),
+            _labelSizeButtons(),
+            _visibilityButtons(),
+            const Spacer(),
+            _progressBar(),
+            _playButton(),
+          ],
         ),
       ),
     );
   }
-}
 
-class CurrentSongTitle extends StatelessWidget {
-  const CurrentSongTitle({Key? key}) : super(key: key);
-  @override
-  Widget build(BuildContext context) {
-    final pageManager = getIt<PageManager>();
-    return ValueListenableBuilder<String>(
-      valueListenable: pageManager.currentSongTitleNotifier,
-      builder: (_, title, __) {
-        return Padding(
-          padding: const EdgeInsets.only(top: 8.0),
-          child: Text(title, style: TextStyle(fontSize: 40)),
-        );
-      },
-    );
-  }
-}
-
-class Playlist extends StatelessWidget {
-  const Playlist({Key? key}) : super(key: key);
-  @override
-  Widget build(BuildContext context) {
-    final pageManager = getIt<PageManager>();
-    return Expanded(
-      child: ValueListenableBuilder<List<String>>(
-        valueListenable: pageManager.playlistNotifier,
-        builder: (context, playlistTitles, _) {
-          return ListView.builder(
-            itemCount: playlistTitles.length,
-            itemBuilder: (context, index) {
-              return ListTile(
-                title: Text('${playlistTitles[index]}'),
-              );
-            },
-          );
+  Wrap _themeButtons() {
+    return Wrap(children: [
+      OutlinedButton(
+        child: const Text('light'),
+        onPressed: () {
+          themeNotifier.value =
+              const ThemeVariation(Colors.blue, Brightness.light);
         },
       ),
-    );
-  }
-}
-
-class AddRemoveSongButtons extends StatelessWidget {
-  const AddRemoveSongButtons({Key? key}) : super(key: key);
-  @override
-  Widget build(BuildContext context) {
-    final pageManager = getIt<PageManager>();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 20.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          FloatingActionButton(
-            onPressed: pageManager.add,
-            child: Icon(Icons.add),
-          ),
-          FloatingActionButton(
-            onPressed: pageManager.remove,
-            child: Icon(Icons.remove),
-          ),
-        ],
+      OutlinedButton(
+        child: const Text('dark'),
+        onPressed: () {
+          themeNotifier.value =
+              const ThemeVariation(Colors.blue, Brightness.dark);
+        },
       ),
-    );
+    ]);
   }
-}
 
-class AudioProgressBar extends StatelessWidget {
-  const AudioProgressBar({Key? key}) : super(key: key);
-  @override
-  Widget build(BuildContext context) {
-    final pageManager = getIt<PageManager>();
-    return ValueListenableBuilder<ProgressBarState>(
-      valueListenable: pageManager.progressNotifier,
-      builder: (_, value, __) {
-        return ProgressBar(
-          progress: value.current,
-          buffered: value.buffered,
-          total: value.total,
-          onSeek: pageManager.seek,
-        );
-      },
-    );
-  }
-}
-
-class AudioControlButtons extends StatelessWidget {
-  const AudioControlButtons({Key? key}) : super(key: key);
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 60,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          RepeatButton(),
-          PreviousSongButton(),
-          PlayButton(),
-          NextSongButton(),
-          ShuffleButton(),
-        ],
+  Wrap _labelLocationButtons() {
+    return Wrap(children: [
+      OutlinedButton(
+        child: const Text('below'),
+        onPressed: () {
+          setState(() => _labelLocation = TimeLabelLocation.below);
+        },
       ),
+      OutlinedButton(
+        child: const Text('above'),
+        onPressed: () {
+          setState(() => _labelLocation = TimeLabelLocation.above);
+        },
+      ),
+      OutlinedButton(
+        child: const Text('sides'),
+        onPressed: () {
+          setState(() => _labelLocation = TimeLabelLocation.sides);
+        },
+      ),
+      OutlinedButton(
+        child: const Text('none'),
+        onPressed: () {
+          setState(() => _labelLocation = TimeLabelLocation.none);
+        },
+      ),
+    ]);
+  }
+
+  Wrap _labelTypeButtons() {
+    return Wrap(children: [
+      OutlinedButton(
+        child: const Text('total time'),
+        onPressed: () {
+          setState(() => _labelType = TimeLabelType.totalTime);
+        },
+      ),
+      OutlinedButton(
+        child: const Text('remaining time'),
+        onPressed: () {
+          setState(() => _labelType = TimeLabelType.remainingTime);
+        },
+      ),
+    ]);
+  }
+
+  Wrap _labelSizeButtons() {
+    final fontColor = Theme.of(context).textTheme.bodyText1?.color;
+    return Wrap(children: [
+      OutlinedButton(
+        child: const Text('standard label size'),
+        onPressed: () {
+          setState(() => _labelStyle = null);
+        },
+      ),
+      OutlinedButton(
+        child: const Text('large'),
+        onPressed: () {
+          setState(
+              () => _labelStyle = TextStyle(fontSize: 40, color: fontColor));
+        },
+      ),
+      OutlinedButton(
+        child: const Text('small'),
+        onPressed: () {
+          setState(
+              () => _labelStyle = TextStyle(fontSize: 8, color: fontColor));
+        },
+      ),
+    ]);
+  }
+
+  Wrap _visibilityButtons() {
+    final fontColor = Theme.of(context).textTheme.bodyText1?.color;
+    return Wrap(children: [
+      OutlinedButton(
+        child: const Text('Invisible'),
+        onPressed: () {
+          setState(() => _visibility = 0.0);
+        },
+      ),
+      OutlinedButton(
+        child: const Text('Visible'),
+        onPressed: () {
+          setState(() => _visibility = 1.0);
+        },
+      ),
+    ]);
+  }
+
+  StreamBuilder<DurationState> _progressBar() {
+    return StreamBuilder<DurationState>(
+      stream: _durationState,
+      builder: (context, snapshot) {
+        final durationState = snapshot.data;
+        final progress = durationState?.progress ?? Duration.zero;
+        final buffered = durationState?.buffered ?? Duration.zero;
+        final total = durationState?.total ?? Duration.zero;
+        return AnimatedOpacity(
+          opacity: _visibility,
+          duration: const Duration(milliseconds: 300),
+          child: ProgressBar(
+            progress: progress,
+            buffered: buffered,
+            total: total,
+            onSeek: (duration) {
+              _player.seek(duration);
+            },
+            timeLabelLocation: _labelLocation,
+            timeLabelType: _labelType,
+            timeLabelTextStyle: _labelStyle,
+          ),
+        );
+      },
     );
   }
-}
 
-class RepeatButton extends StatelessWidget {
-  const RepeatButton({Key? key}) : super(key: key);
-  @override
-  Widget build(BuildContext context) {
-    final pageManager = getIt<PageManager>();
-    return ValueListenableBuilder<RepeatState>(
-      valueListenable: pageManager.repeatButtonNotifier,
-      builder: (context, value, child) {
-        Icon icon;
-        switch (value) {
-          case RepeatState.off:
-            icon = Icon(Icons.repeat, color: Colors.grey);
-            break;
-          case RepeatState.repeatSong:
-            icon = Icon(Icons.repeat_one);
-            break;
-          case RepeatState.repeatPlaylist:
-            icon = Icon(Icons.repeat);
-            break;
+  StreamBuilder<PlayerState> _playButton() {
+    return StreamBuilder<PlayerState>(
+      stream: _player.playerStateStream,
+      builder: (context, snapshot) {
+        final playerState = snapshot.data;
+        final processingState = playerState?.processingState;
+        final playing = playerState?.playing;
+        if (processingState == ProcessingState.loading ||
+            processingState == ProcessingState.buffering) {
+          return Container(
+            margin: const EdgeInsets.all(8.0),
+            width: 32.0,
+            height: 32.0,
+            child: const CircularProgressIndicator(),
+          );
+        } else if (playing != true) {
+          return IconButton(
+            icon: const Icon(Icons.play_arrow),
+            iconSize: 32.0,
+            onPressed: _player.play,
+          );
+        } else if (processingState != ProcessingState.completed) {
+          return IconButton(
+            icon: const Icon(Icons.pause),
+            iconSize: 32.0,
+            onPressed: _player.pause,
+          );
+        } else {
+          return IconButton(
+            icon: const Icon(Icons.replay),
+            iconSize: 32.0,
+            onPressed: () => _player.seek(Duration.zero),
+          );
         }
-        return IconButton(
-          icon: icon,
-          onPressed: pageManager.repeat,
-        );
       },
     );
   }
 }
 
-class PreviousSongButton extends StatelessWidget {
-  const PreviousSongButton({Key? key}) : super(key: key);
-  @override
-  Widget build(BuildContext context) {
-    final pageManager = getIt<PageManager>();
-    return ValueListenableBuilder<bool>(
-      valueListenable: pageManager.isFirstSongNotifier,
-      builder: (_, isFirst, __) {
-        return IconButton(
-          icon: Icon(Icons.skip_previous),
-          onPressed:
-              (isFirst) ? null : pageManager.previous,
-        );
-      },
-    );
-  }
-}
-
-class PlayButton extends StatelessWidget {
-  const PlayButton({Key? key}) : super(key: key);
-  @override
-  Widget build(BuildContext context) {
-    final pageManager = getIt<PageManager>();
-    return ValueListenableBuilder<ButtonState>(
-      valueListenable: pageManager.playButtonNotifier,
-      builder: (_, value, __) {
-        switch (value) {
-          case ButtonState.loading:
-            return Container(
-              margin: EdgeInsets.all(8.0),
-              width: 32.0,
-              height: 32.0,
-              child: CircularProgressIndicator(),
-            );
-          case ButtonState.paused:
-            return IconButton(
-              icon: Icon(Icons.play_arrow),
-              iconSize: 32.0,
-              onPressed: pageManager.play,
-            );
-          case ButtonState.playing:
-            return IconButton(
-              icon: Icon(Icons.pause),
-              iconSize: 32.0,
-              onPressed: pageManager.pause,
-            );
-        }
-      },
-    );
-  }
-}
-
-class NextSongButton extends StatelessWidget {
-  const NextSongButton({Key? key}) : super(key: key);
-  @override
-  Widget build(BuildContext context) {
-    final pageManager = getIt<PageManager>();
-    return ValueListenableBuilder<bool>(
-      valueListenable: pageManager.isLastSongNotifier,
-      builder: (_, isLast, __) {
-        return IconButton(
-          icon: Icon(Icons.skip_next),
-          onPressed: (isLast) ? null : pageManager.next,
-        );
-      },
-    );
-  }
-}
-
-class ShuffleButton extends StatelessWidget {
-  const ShuffleButton({Key? key}) : super(key: key);
-  @override
-  Widget build(BuildContext context) {
-    final pageManager = getIt<PageManager>();
-    return ValueListenableBuilder<bool>(
-      valueListenable: pageManager.isShuffleModeEnabledNotifier,
-      builder: (context, isEnabled, child) {
-        return IconButton(
-          icon: (isEnabled)
-              ? Icon(Icons.shuffle)
-              : Icon(Icons.shuffle, color: Colors.grey),
-          onPressed: pageManager.shuffle,
-        );
-      },
-    );
-  }
+class DurationState {
+  const DurationState({
+    required this.progress,
+    required this.buffered,
+    this.total,
+  });
+  final Duration progress;
+  final Duration buffered;
+  final Duration? total;
 }

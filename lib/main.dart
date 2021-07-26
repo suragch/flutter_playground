@@ -1,10 +1,8 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:yaml/yaml.dart';
+import 'package:get_it/get_it.dart';
 
 void main() {
+  setUpGetIt();
   runApp(const MyApp());
 }
 
@@ -13,43 +11,83 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: const HomeWidget(),
+      home: const ShopPageList(),
     );
   }
 }
 
-class HomeWidget extends StatefulWidget {
-  const HomeWidget({Key? key}) : super(key: key);
+class ShopPageList extends StatefulWidget {
+  const ShopPageList({Key? key}) : super(key: key);
 
   @override
-  _HomeWidgetState createState() => _HomeWidgetState();
+  _ShopPageListState createState() => _ShopPageListState();
 }
 
-class _HomeWidgetState extends State<HomeWidget> {
+class _ShopPageListState extends State<ShopPageList> {
+  @override
+  void initState() {
+    getIt<ShopNotifier>().init();
+    super.initState();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return ElevatedButton(
-      child: Text('Read YAML'),
-      onPressed: () {
-        //loadAsset(context);
-        const country = String.fromEnvironment('country');
-        const animal = String.fromEnvironment('animal');
-        print(country);
-        print(animal);
+    final notifier = getIt<ShopNotifier>();
+    return ValueListenableBuilder<List<Shop>>(
+      valueListenable: notifier,
+      builder: (context, shopList, child) {
+        return Expanded(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(10.0),
+              child: Column(children: [] //shopCardList,
+                  ),
+            ),
+          ),
+        );
       },
     );
   }
+}
 
-  Future<void> loadAsset(BuildContext context) async {
-    final yamlString = await DefaultAssetBundle.of(context)
-        .loadString('assets/my_config.yaml');
-    print(yamlString);
-    final dynamic yamlMap = loadYaml(yamlString);
-    print(yamlMap['country']);
-    print(yamlMap['animal']);
+class ShopNotifier extends ValueNotifier<List<Shop>> {
+  ShopNotifier() : super(_initialShopList);
+
+  static const List<Shop> _initialShopList = [];
+
+  Future<void> init() async {
+    final shopService = getIt<ShopService>();
+    value = await shopService.getShopList();
   }
 }
 
-class EnvironmentConfig {
-  static const SOME_VAR = String.fromEnvironment('x');
+class Shop {}
+
+final getIt = GetIt.instance;
+
+void setUpGetIt() {
+  // service layer
+  getIt.registerLazySingleton<ShopService>(() => FakeShopService());
+  // state management layer
+  getIt.registerLazySingleton<ShopNotifier>(() => ShopNotifier());
 }
+
+abstract class ShopService {
+  Future<List<Shop>> getShopList();
+}
+
+class FakeShopService implements ShopService {
+  @override
+  Future<List<Shop>> getShopList() async {
+    await Future.delayed(Duration(seconds: 3));
+    return [Shop(), Shop(), Shop()];
+  }
+}
+
+// class RealShopService implements ShopService {
+//   @override
+//   Future<List<Shop>> getShopList() async {
+//     // TODO: contact server and get JSON shop list
+//     // TODO: convert JSON to List<Shop>
+//   }
+// }
